@@ -1,4 +1,12 @@
+
+
 .venv/
 __pycache__/
 .env
 *.pt
+
+# Downloaded datasets
+Trash-Detection-13/
+*.zip
+
+runs/
