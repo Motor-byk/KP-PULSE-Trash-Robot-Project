@@ -54,6 +54,7 @@ CUSTOM_CLASS_TO_BIN = {
 COCO_CLASS_TO_BIN = {
     "bottle": RECYCLE,
     "wine glass": RECYCLE,
+    "book": RECYCLE,       # stand-in for paper/cardboard, which COCO lacks
 
     "banana": COMPOST,
     "apple": COMPOST,
@@ -63,14 +64,25 @@ COCO_CLASS_TO_BIN = {
     "pizza": COMPOST,
     "donut": COMPOST,
     "cake": COMPOST,
+    "sandwich": COMPOST,
+    "hot dog": COMPOST,
 
-    "cup": WASTE,      # assumed disposable/lined rather than a ceramic mug
-    "bowl": WASTE,     # assumed ceramic
+    "cup": WASTE,          # assumed disposable/lined rather than a ceramic mug
+    "bowl": WASTE,         # assumed ceramic
+    "toothbrush": WASTE,
 }
 
-# COCO indices matching COCO_CLASS_TO_BIN, to pass as `classes=` so the
-# detector never even reports the other 68 categories.
-COCO_CLASS_IDS = [39, 40, 41, 45, 46, 47, 49, 50, 51, 53, 54, 55]
+# COCO indices for the classes above, passed as `classes=` so the detector
+# never even reports the categories we have no rule for.
+COCO_MAPPED_IDS = [39, 40, 41, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 73, 79]
+
+# Detected on purpose but deliberately absent from COCO_CLASS_TO_BIN, so
+# `bin_for()` returns UNKNOWN for them. These exercise the safety path: a
+# stably tracked object that must still never become a grasp target.
+# Do NOT add bin rules for these -- that would delete the only live test of it.
+COCO_DISTRACTOR_IDS = [67, 76]   # cell phone, scissors
+
+COCO_CLASS_IDS = COCO_MAPPED_IDS + COCO_DISTRACTOR_IDS
 
 
 def bin_for(class_name, prototype=False):
