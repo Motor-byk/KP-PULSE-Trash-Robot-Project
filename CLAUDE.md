@@ -2,6 +2,29 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Working style
+
+**Explain before acting, not after.** Before running a command, editing a file, or adding a new
+file, say what it is and what it will do — then do it. Never fold this into an end-of-turn summary.
+
+For each command, edit, or new file, cover:
+
+- **What** it does — the concrete effect. Files written, paths touched, how long it runs, whether
+  it overwrites anything.
+- **Why** it's needed *here* — the specific problem in this project it solves.
+- **The concept underneath**, briefly — what the flag, API, or pattern actually does, and why the
+  obvious alternative is worse. This is a learning project; an explanation should transfer to the
+  next decision, not just justify this one.
+
+A line or two per item is usually right. Go longer when the concept is new, shorter when it's a
+repeat of something already explained this session.
+
+Read-only inspection (`cat`, `grep`, `ls`, reading a file) doesn't need a preamble unless what it
+turns up changes the plan.
+
+**Never hand back an action — "run this", "test that", "go move the camera" — while any command,
+edit, or new file leading up to it is still unexplained.**
+
 ## Project
 
 Vision stage for a trash-sorting robot arm. A YOLO detector finds objects on the work surface,
