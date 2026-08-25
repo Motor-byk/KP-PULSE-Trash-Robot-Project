@@ -6,6 +6,7 @@ __pycache__/
 *.pt
 
 # Downloaded datasets
+datasets/
 Trash-Detection-13/
 *.zip
 
