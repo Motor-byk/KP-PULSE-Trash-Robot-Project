@@ -41,12 +41,19 @@ Local venv at `.venv` (Python 3.12, ultralytics 8.4.x, torch+cu130, CUDA availab
 ```bash
 source .venv/bin/activate
 
-python main.py             # live webcam detection + bin decisions (press Q to quit)
+python main.py             # live detection + bin decisions + arm control
+python calibrate_camera.py # one-time: solve the pixel -> millimetre mapping
+python test_kinematics.py  # self-check the arm math, no hardware needed
 python download_dataset.py # pull the labeled dataset from Roboflow
 python train.py            # fine-tune yolo11s.pt -> runs/detect/trash-bins/weights/best.pt
 ```
 
-No tests, linters, or build steps are configured.
+`main.py` keys: SPACE pick the highlighted target, A toggle auto, H home, C clear the
+picked list, Q quit.
+
+`test_kinematics.py` is the only test. It is a plain script, not pytest. Run it after any
+edit to `arm_config.py` — it round-trips the IK through the FK and verifies the joint
+limits and servo ranges still agree. No linters or build steps are configured.
 
 `download_dataset.py` needs `ROBOFLOW_API_KEY` in `.env`, and its `WORKSPACE`/`PROJECT` constants
 must be pointed at the current Roboflow project.
@@ -56,9 +63,53 @@ read it before questioning why the OBB pipeline was abandoned.
 
 ## Architecture
 
-Three scripts plus a mapping module, run manually. State passes between them through the filesystem:
+Two pipelines. Training passes state through the filesystem:
 
 `download_dataset.py` → `datasets/trash-bins/` → `train.py` → `runs/detect/trash-bins/weights/best.pt` → `main.py`
+
+and at runtime a detection becomes a motion:
+
+`main.py` → `workspace.py` (pixels → mm) → `kinematics.py` (mm → joint angles) → `pick_place.py` (sequence) → `arm_driver.py` (serial)
+
+`docs/arm-setup.md` is the bring-up guide and holds the serial protocol the Arduino sketch
+must implement. The sketch itself is not in this repo.
+
+### Every physical constant lives in one place
+
+`arm_config.py` holds every dimension, joint limit, servo trim, timing, and port.
+`bins.py` holds where the bins physically are. `camera_calibration.json` holds the
+pixel→millimetre mapping and is written by `calibrate_camera.py`. **Never write a
+measurement inline anywhere else** — the whole arm layer was built so that finishing the
+robot means editing one file, not hunting through five.
+
+World frame for all of it: origin at the arm's base rotation axis at table level, +X
+forward, +Y to the arm's left, +Z up, millimetres. Joint angles are geometric (shoulder
+from vertical, others from the previous link); servo trim and direction are a separate
+mapping, so a backwards servo is fixed by flipping a sign in `arm_config.SERVOS`, never by
+negating something in `kinematics.py`.
+
+### A servo's travel is a joint limit
+
+`arm_config.EFFECTIVE_JOINT_LIMITS_DEG` intersects `JOINT_LIMITS_DEG` with the geometric
+range each servo can actually produce from where it is mounted, and that intersection is
+what `kinematics.check_limits` enforces. Keep it that way. When the two are allowed to
+disagree, the driver is left choosing between silently clamping — which puts the arm
+somewhere nobody solved for — and failing mid-sequence with an object in the gripper.
+`joint_to_servo_deg` raises rather than clamping for the same reason.
+
+### Plan the whole motion before moving
+
+`pick_place.plan_pick` solves and limit-checks every waypoint before the first servo is
+commanded, and refuses the whole sequence if any step is unreachable. A sequence that
+fails halfway leaves the arm holding trash over the workspace with no plan; refusing up
+front leaves it at home, which is always recoverable.
+
+### The arm blocks the vision loop, deliberately
+
+A pick takes seconds, during which the arm occludes the mat and the camera keeps
+buffering. After any motion `main.py` calls `workspace.flush()` and `TrackVoter.reset()`,
+so what resumes is the world as it is now rather than the scene from before the grasp.
+Keep both calls on every path that moves the arm.
 
 ### Perception predicts objects; policy assigns bins
 
@@ -119,5 +170,6 @@ on them.
 ## Repo contents vs. working tree
 
 `.gitignore` excludes `*.pt`, `datasets/`, `Trash-Detection-13/`, `runs/`, `.venv/`, and `.env` — the
-committed repo is only the scripts. Weights, datasets, and training output exist locally only and
+committed repo is only the scripts. `camera_calibration.json` is committed on purpose: it is
+small, it is specific to this camera mount, and losing it means redoing the calibration. Weights, datasets, and training output exist locally only and
 cannot be recovered from git. Assume a fresh clone has none of them.

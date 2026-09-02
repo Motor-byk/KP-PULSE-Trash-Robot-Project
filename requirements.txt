@@ -1,0 +1,19 @@
+# Pinned to what the local .venv (Python 3.12) is known to work with.
+#   python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+#
+# torch is deliberately absent: the CUDA build has to be installed from PyTorch's
+# own index for your driver version, and ultralytics pulls a CPU build if it is
+# left to resolve torch itself. Install torch first, then this file.
+# See https://pytorch.org/get-started/locally/ -- this machine uses cu130.
+
+ultralytics==8.4.121
+opencv-python==5.0.0.93
+numpy==2.3.5
+
+# Dataset fetching (download_dataset.py)
+roboflow==1.4.1
+python-dotenv==1.2.3
+
+# Serial link to the arm's Arduino. Only imported when SIMULATE_ARM is False, so
+# the vision and simulated-arm paths run without it.
+pyserial==3.5

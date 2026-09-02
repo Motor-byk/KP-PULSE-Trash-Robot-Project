@@ -22,6 +22,30 @@ BIN_COLORS = {
 
 
 # --------------------------------------------------------------------------
+# Where each bin physically is, in world millimetres from the arm's base
+# rotation axis: (X forward, Y left, Z above the table).
+#
+# These live here rather than in arm_config.py for the same reason the class
+# table does: where you put your compost bin is bin policy, not a property of
+# the arm. Rearranging the bins should not mean touching the robot's dimensions.
+#
+# Z is the height the gripper opens at -- a little above the bin's rim, so the
+# item drops in rather than being placed on the edge.
+#
+# PLACEHOLDERS. Measure from the base axis with a tape once the bins are set
+# down, and mark their positions on the table so they can be put back. pick_place
+# .check_bin_positions() verifies at startup that the arm can actually reach all
+# three, so a bad number here surfaces before anything is picked up.
+# --------------------------------------------------------------------------
+
+BIN_DROP_XYZ = {
+    RECYCLE: (90.0, 110.0, 100.0),     # to the arm's left
+    COMPOST: (150.0, 0.0, 100.0),      # straight ahead, beyond the mat
+    WASTE: (90.0, -110.0, 100.0),      # to the arm's right
+}
+
+
+# --------------------------------------------------------------------------
 # Custom model classes (Step 2 of the plan).
 # Keep these keys identical to the `names:` list in the dataset data.yaml.
 # --------------------------------------------------------------------------
