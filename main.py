@@ -19,6 +19,7 @@ Keys:
 """
 
 import contextlib
+import datetime
 
 import cv2
 from collections import Counter, deque
@@ -66,6 +67,15 @@ AUTO_MODE_DEFAULT = False
 # is out of the way.
 AUTO_SETTLE_FRAMES = 20
 
+# Set to True if you want to save decision and frame data for the current
+# session
+IS_RECORDING_DATA = False
+RECORDING_INTERVAL = 0.5
+
+# Label IS_RECORDING_DATA = True sessions using the start time as a naming 
+# convention
+CUR_DATETIME = datetime.now()
+RECORD_DIR = "captures/" + str(CUR_DATETIME)
 
 class TrackVoter:
     """Per-track class voting, so momentary misclassifications get filtered out."""
@@ -232,6 +242,7 @@ def setup_arm():
 
 
 def main():
+    # Model instantiated
     model = YOLO(MODEL_PATH)
     voter = TrackVoter()
 
