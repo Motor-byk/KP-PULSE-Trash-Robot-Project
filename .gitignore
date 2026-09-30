@@ -12,4 +12,7 @@ Trash-Detection-13/
 
 runs/
 
+# Frames + labels saved by main.py when IS_RECORDING_DATA is on
+captures/
+
 repo-bench-card.html

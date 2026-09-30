@@ -19,9 +19,12 @@ Keys:
 """
 
 import contextlib
-import datetime
+import time
+from datetime import datetime
+from pathlib import Path
 
 import cv2
+import yaml
 from collections import Counter, deque
 from ultralytics import YOLO
 
@@ -69,13 +72,13 @@ AUTO_SETTLE_FRAMES = 20
 
 # Set to True if you want to save decision and frame data for the current
 # session
-IS_RECORDING_DATA = False
+IS_RECORDING_DATA = True
 RECORDING_INTERVAL = 0.5
 
 # Label IS_RECORDING_DATA = True sessions using the start time as a naming 
 # convention
 CUR_DATETIME = datetime.now()
-RECORD_DIR = "captures/" + str(CUR_DATETIME)
+RECORD_DIR = "captures/" + CUR_DATETIME.strftime("%Y%m%d-%H%M%S")
 
 class TrackVoter:
     """Per-track class voting, so momentary misclassifications get filtered out."""
@@ -133,6 +136,66 @@ class TrackVoter:
         self.votes.clear()
         self.last_seen.clear()
         self.stable_since.clear()
+
+
+class FrameRecorder:
+    """Save raw frames and their detections as a YOLO dataset, at a fixed interval.
+
+    The output uploads to Roboflow as pre-annotated images: every box the model
+    found is already drawn, so labeling means correcting mistakes rather than
+    drawing from scratch. One folder per run, so datasets can later be split by
+    capture session instead of randomly.
+    """
+
+    def __init__(self, session_dir, interval_s, names):
+        self.interval_s = interval_s
+        self.last_save = None   # monotonic time of the last save; None = never saved
+        self.count = 0          # number of the last file written
+
+        self.session = Path(session_dir)
+        self.images = self.session / "images"
+        self.labels = self.session / "labels"
+        # No exist_ok: a clash means two runs in the same second, and failing
+        # beats one run silently overwriting the other's files.
+        self.images.mkdir(parents=True)
+        self.labels.mkdir()
+
+        # Class id -> name table, so the ids in the label files mean something
+        with open(self.session / "data.yaml", "w") as f:
+            yaml.safe_dump({"names": dict(names)}, f)
+
+    def maybe_save(self, frame, results):
+        """Save this frame if the interval has passed.
+
+        Must be called before anything is drawn on the frame -- training images
+        with boxes painted on them teach the model to look for rectangles.
+        """
+        # monotonic, not time.time(): a wall-clock adjustment can't make it
+        # skip saves or fire a burst of them
+        now = time.monotonic()
+        if self.last_save is not None and now - self.last_save < self.interval_s:
+            return
+        self.last_save = now
+        self.count += 1
+
+        stem = f"{self.count:06d}"
+        # Image before label: a crash in between leaves an unlabeled image,
+        # which is harmless, never a label with no image
+        cv2.imwrite(str(self.images / f"{stem}.jpg"), frame)
+
+        # Every box, tracked or not -- labels don't need track IDs.
+        # xywhn is already YOLO format: center x, center y, width, height, 0-1.
+        lines = []
+        for result in results:
+            if result.boxes is None:
+                continue
+            for cls, (cx, cy, w, h) in zip(result.boxes.cls.int().tolist(),
+                                          result.boxes.xywhn.tolist()):
+                lines.append(f"{cls} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}\n")
+
+        # Written even when empty: an empty label file is a hard negative
+        with open(self.labels / f"{stem}.txt", "w") as f:
+            f.writelines(lines)
 
 
 def draw_detection(frame, xyxy, label, color, center, selected=False):
@@ -265,12 +328,20 @@ def main():
     if PROTOTYPE_MODE:
         track_kwargs["classes"] = bins.COCO_CLASS_IDS
 
+    recorder = None
+    if IS_RECORDING_DATA:
+        recorder = FrameRecorder(RECORD_DIR, RECORDING_INTERVAL, model.names)
+
     print(f"Model: {MODEL_PATH}  (prototype={PROTOTYPE_MODE})")
     print(f"Camera: {resolution[0]}x{resolution[1]}")
     if driver is None:
         print(f"Arm: OFF -- {arm_note}")
     else:
         print(f"Arm: {'SIMULATED' if SIMULATE_ARM else 'LIVE HARDWARE'}")
+    if recorder is None:
+        print("Recording: off")
+    else:
+        print(f"Recording: {RECORD_DIR} every {RECORDING_INTERVAL}s")
     print("Keys: SPACE pick | A auto | H home | C clear picked | Q quit\n")
 
     frame_idx = 0
@@ -299,6 +370,10 @@ def main():
 
             frame_idx += 1
             results = model.track(frame, **track_kwargs)
+
+            # Before any drawing: from here on the frame gets painted in place
+            if recorder is not None:
+                recorder.maybe_save(frame, results)
 
             # Grasp targets for this frame, in the order they were detected
             targets = []
@@ -385,6 +460,8 @@ def main():
                 (f"targets: {len(targets)}   picked: {len(already_picked)}", (255, 255, 255)),
                 arm_line,
             ]
+            if recorder is not None:
+                hud.append((f"REC  {recorder.count} saved", (0, 0, 255)))
             if status:
                 hud.append((status, (200, 200, 200)))
             draw_hud(frame, hud)
